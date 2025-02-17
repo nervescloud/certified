@@ -10,6 +10,7 @@ defmodule Certified.MixProject do
       app: :certified,
       description: @description,
       version: @version,
+      source_url: @source_url,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       package: package(),
@@ -33,11 +34,12 @@ defmodule Certified.MixProject do
       licenses: ["MIT"],
       links: %{"GitHub" => @source_url},
       files: [
-        "lib",
+        "README.md",
         "CHANGELOG.md",
         "LICENSE",
+        "lib",
         "mix.exs",
-        "README.md"
+        ".formatter.exs"
       ]
     ]
   end
@@ -51,6 +53,7 @@ defmodule Certified.MixProject do
 
   defp deps do
     [
+      {:ex_doc, "~> 0.18", only: :dev, runtime: false},
       {:jose, "~> 1.11"},
       {:phoenix, "~> 1.7"},
       {:phoenix_pubsub, "~> 2.1"},
