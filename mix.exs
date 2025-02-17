@@ -1,0 +1,64 @@
+defmodule Certified.MixProject do
+  use Mix.Project
+
+  @version "0.1.0"
+  @description "An ACME certificate built for distributed Phoenix applications."
+  @source_url "https://github.com/nervescloud/certified"
+
+  def project do
+    [
+      app: :certified,
+      description: @description,
+      version: @version,
+      elixir: "~> 1.18",
+      start_permanent: Mix.env() == :prod,
+      package: package(),
+      docs: docs(),
+      deps: deps()
+    ]
+  end
+
+  defp docs do
+    [
+      extras: ["README.md", "CHANGELOG.md"],
+      main: "readme",
+      source_ref: "v#{@version}",
+      source_url: @source_url,
+      skip_undefined_reference_warnings_on: ["CHANGELOG.md"]
+    ]
+  end
+
+  defp package do
+    [
+      licenses: ["MIT"],
+      links: %{"GitHub" => @source_url},
+      files: [
+        "lib",
+        "CHANGELOG.md",
+        "LICENSE",
+        "mix.exs",
+        "README.md"
+      ]
+    ]
+  end
+
+  def application do
+    [
+      mod: {Certified.Application, []},
+      extra_applications: [:sasl, :logger]
+    ]
+  end
+
+  defp deps do
+    [
+      {:jose, "~> 1.11"},
+      {:phoenix, "~> 1.7"},
+      {:phoenix_pubsub, "~> 2.1"},
+      {:process_hub, "~> 0.3.1-alpha"},
+      {:req, "~> 0.5.8"},
+      {:thousand_island, "~> 1.3"},
+      {:x509, "~> 0.8.10"},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+    ]
+  end
+end
