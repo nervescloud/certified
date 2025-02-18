@@ -27,7 +27,7 @@ defmodule Certified.CertificateUpdaterRegistration do
   def handle_info(:register_certificate_updater, _) do
     ProcessHub.start_child(:certified_certificate_updater, %{
       id: :certificate_updater,
-      start: {CertificateUpdater, :start_link, []}
+      start: {CertificateUpdater, :start_link, [nil]}
     })
     |> case do
       {:ok, _} ->

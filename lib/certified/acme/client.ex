@@ -12,7 +12,7 @@ defmodule Certified.Acme.Client do
 
   require Logger
 
-  def generate_certificate(domains, acme_url, opts \\ []) do
+  def generate_certificate(domains, acme_url, ec_key, opts \\ []) do
     domains = List.flatten([domains])
     Logger.debug("[Acme] Generating certificate(s) for [#{Enum.join(domains, ", ")}]")
 
@@ -21,9 +21,6 @@ defmodule Certified.Acme.Client do
 
     Logger.debug("[Acme] Requesting a fresh nonce")
     nonce = new_nonce(ops["newNonce"])
-
-    Logger.debug("[Acme] Forging a fresh ECPrivateKey")
-    ec_key = generate_domain_ec_key()
 
     Logger.debug("[Acme] Generating a new account")
     {account_location, nonce} = new_account(ops["newAccount"], ec_key, nonce, opts)
@@ -190,10 +187,6 @@ defmodule Certified.Acme.Client do
       request(:post, certificate_url, body, error_message: "Cannot download final certificate")
 
     {:ok, response.body}
-  end
-
-  defp generate_domain_ec_key() do
-    :public_key.generate_key({:namedCurve, :secp256r1})
   end
 
   defp protected_payload(ec_key, nonce, url) do

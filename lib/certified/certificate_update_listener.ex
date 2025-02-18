@@ -2,7 +2,6 @@ defmodule Certified.CertificateUpdateListener do
   use GenServer
 
   alias Phoenix.PubSub
-  alias Phoenix.Socket.Broadcast
 
   defmodule State do
     defstruct certificate_store: nil,
@@ -33,14 +32,14 @@ defmodule Certified.CertificateUpdateListener do
   end
 
   @impl GenServer
-  def handle_info(%Broadcast{event: "certs_keys/updated", payload: certs_keys}, state) do
+  def handle_info(%{event: "certs_keys/updated", payload: certs_keys}, state) do
     true = :ets.insert(state.certificate_store, {:certs_keys, certs_keys})
 
     {:noreply, %State{state | configured?: true}}
   end
 
   @impl GenServer
-  def handle_info(%Broadcast{event: "sync/request"}, state) do
+  def handle_info(%{event: "sync/request"}, state) do
     case :ets.lookup(state.certificate_store, :certs_keys) do
       [] ->
         true
@@ -60,12 +59,11 @@ defmodule Certified.CertificateUpdateListener do
   end
 
   defp broadcast(event, payload \\ %{}) do
-    Phoenix.Channel.Server.broadcast_from!(
+    Phoenix.PubSub.broadcast_from!(
       Certified.PubSub,
       self(),
       "certified:certificate_updater",
-      event,
-      payload
+      %{event: event, payload: payload}
     )
   end
 end

@@ -53,9 +53,10 @@ defmodule Certified.MixProject do
 
   defp deps do
     [
+      {:ex_aws, "~> 2.0", optional: true},
+      {:ex_aws_s3, "~> 2.0", optional: true},
       {:ex_doc, "~> 0.18", only: :dev, runtime: false},
       {:jose, "~> 1.11"},
-      {:phoenix, "~> 1.7"},
       {:phoenix_pubsub, "~> 2.1"},
       {:process_hub, "~> 0.3.1-alpha"},
       {:req, "~> 0.5.8"},
