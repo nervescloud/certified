@@ -1,4 +1,4 @@
-if Code.loaded?(ExAws.S3) do
+if Code.ensure_loaded?(ExAws.S3) do
   defmodule Certified.Caches.S3 do
     @behaviour Certified.AcmeCache
     @moduledoc """
