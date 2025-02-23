@@ -2,7 +2,7 @@ defmodule Certified.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @description "An ACME certificate built for distributed Phoenix applications."
+  @description "An ACME integration built for distributed Phoenix applications."
   @source_url "https://github.com/nervescloud/certified"
 
   def project do
@@ -47,7 +47,7 @@ defmodule Certified.MixProject do
   def application do
     [
       mod: {Certified.Application, []},
-      extra_applications: [:sasl, :logger]
+      extra_applications: [:crypto, :sasl, :logger]
     ]
   end
 
@@ -59,6 +59,7 @@ defmodule Certified.MixProject do
       {:jose, "~> 1.11"},
       {:phoenix_pubsub, "~> 2.1"},
       {:process_hub, "~> 0.3.1-alpha"},
+      {:plug, "~> 1.16"},
       {:req, "~> 0.5.8"},
       {:thousand_island, "~> 1.3"},
       {:x509, "~> 0.8.10"},

@@ -1,7 +1,9 @@
-defmodule Certified.CertificateUpdateListener do
+defmodule Certified.NodeListener do
   use GenServer
 
   alias Phoenix.PubSub
+
+  @announce_online_delay :timer.seconds(3)
 
   defmodule State do
     defstruct certificate_store: nil,
@@ -22,11 +24,11 @@ defmodule Certified.CertificateUpdateListener do
   def init(_) do
     table = :ets.new(:certified_certificate_store, [:set, :protected, :named_table])
 
-    :ok = PubSub.subscribe(Certified.PubSub, "certified:certificate_update_listener")
+    :ok = PubSub.subscribe(Certified.PubSub, "certified:node_listener")
 
     # Give a few extra seconds before announcing the node is online so
     # we can make sure (be defensive) that the node has joined the cluster
-    Process.send_after(self(), :announce_online, :timer.seconds(5))
+    Process.send_after(self(), :announce_online, @announce_online_delay)
 
     {:ok, %State{certificate_store: table}}
   end
@@ -39,31 +41,14 @@ defmodule Certified.CertificateUpdateListener do
   end
 
   @impl GenServer
-  def handle_info(%{event: "sync/request"}, state) do
-    case :ets.lookup(state.certificate_store, :certs_keys) do
-      [] ->
-        true
-
-      [{_, certs_keys}] ->
-        broadcast("sync/response", certs_keys)
-    end
-
-    {:noreply, state}
-  end
-
-  @impl GenServer
   def handle_info(:announce_online, state) do
-    broadcast("listener/online")
-
-    {:noreply, state}
-  end
-
-  defp broadcast(event, payload \\ %{}) do
     Phoenix.PubSub.broadcast_from!(
       Certified.PubSub,
       self(),
-      "certified:certificate_updater",
-      %{event: event, payload: payload}
+      "certified:certificates_manager",
+      %{event: "listener/online"}
     )
+
+    {:noreply, state}
   end
 end

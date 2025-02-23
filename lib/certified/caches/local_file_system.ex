@@ -11,20 +11,15 @@ defmodule Certified.Caches.LocalFileSystem do
   def save_certificates!(certs_keys) do
     File.mkdir_p!(certificates_path())
 
-    Enum.each(certs_keys, fn %{cert: cert, key: {:ECPrivateKey, key}} ->
-      full_cert = X509.Certificate.from_der!(cert)
-      [common_name] = X509.Certificate.subject(full_cert, "CN")
-
-      private_key_pem = X509.PrivateKey.from_der!(key)
-
-      cert_cache_path = Path.join(certificates_path(), common_name)
+    Enum.each(certs_keys, fn payload ->
+      cert_cache_path = Path.join(certificates_path(), payload.id)
       File.mkdir_p!(cert_cache_path)
 
       Path.join(cert_cache_path, "cert.pem")
-      |> File.write!(X509.Certificate.to_pem(full_cert))
+      |> File.write!(payload.certificate_pem)
 
       Path.join(cert_cache_path, "key.pem")
-      |> File.write!(X509.PrivateKey.to_pem(private_key_pem))
+      |> File.write!(payload.private_key_pem)
     end)
 
     :ok
@@ -35,24 +30,18 @@ defmodule Certified.Caches.LocalFileSystem do
     if File.dir?(certificates_path()) do
       File.ls!(certificates_path())
       |> Enum.filter(fn path -> File.dir?(Path.join(certificates_path(), path)) end)
-      |> Enum.map(fn domain ->
-        domain_path = Path.join(certificates_path(), domain)
+      |> Enum.map(fn certificate_id ->
+        cert_key_path = Path.join(certificates_path(), certificate_id)
 
-        cert_path = Path.join(domain_path, "cert.pem")
-        key_path = Path.join(domain_path, "key.pem")
+        cert_path = Path.join(cert_key_path, "cert.pem")
+        key_path = Path.join(cert_key_path, "key.pem")
 
         if File.exists?(cert_path) && File.exists?(key_path) do
-          cert =
-            File.read!(cert_path)
-            |> X509.Certificate.from_pem!()
-            |> X509.Certificate.to_der()
-
-          key =
-            File.read!(key_path)
-            |> X509.PrivateKey.from_pem!()
-            |> X509.PrivateKey.to_der()
-
-          %{cert: cert, key: {:ECPrivateKey, key}}
+          %{
+            id: certificate_id,
+            certificate_pem: File.read!(cert_path),
+            private_key_pem: File.read!(key_path)
+          }
         end
       end)
     else

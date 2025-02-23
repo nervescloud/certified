@@ -3,39 +3,32 @@ defmodule Certified do
   The central point for calling into Certified.
   """
 
-  @type server_options() :: [:ssl.tls_server_option()]
+  @type cert() :: :public_key.der_encoded() | [:public_key.der_encoded()]
+  @type cert_and_key() :: [cert: cert(), key: :ssl.key()]
 
   @doc """
-  Generates a complete set of options for `:ssl.handshake/2`.
+  Finds the first matching certificate and key for the given domain, or
+  returns `:undefined` if no match is found.
 
-  This uses the Thousand Island `transport_options` config defined in your
-  Phoenix `Endpoint`s config, plus updated TLS keys and certs resolved
-  using the Acme config in your environment.
+  This function is used by the Erlang `:ssl` application, via Cowboy or Bandit.
 
   ## Examples
 
-      iex> Certified.generate_transport_options()
-      [
-        certs_keys: [
-          %{certfile: "mycert.pem", keyfile: "mykey.pem"}
-        ]
-      ]
+      iex> Certified.sni_fun("example.com")
+      [cert: "mycert.pem", key: "mykey.pem"]
+
+      iex> Certified.sni_fun("other-example.com")
+      :undefined
 
   """
-  @spec generate_transport_options() :: server_options()
-  def generate_transport_options() do
-    transport_options = Application.get_env(:certified, :transport_options, [])
-
-    case :ets.lookup(:certified_certificate_store, :certs_keys) do
-      [] ->
-        transport_options
-
-      [{_, certs_keys}] ->
-        transport_options
-        |> Keyword.put(:certs_keys, certs_keys)
-        |> Keyword.reject(fn {key, _val} ->
-          key in [:key, :cert, :keyfile, :certfile]
-        end)
+  @spec sni_fun(String.t()) :: cert_and_key() | :undefined
+  def sni_fun(domain) do
+    :ets.match(:certified_certificate_store, {:_, :"$2"})
+    |> List.flatten()
+    |> Enum.find(fn %{domains: domains} -> to_string(domain) in domains end)
+    |> case do
+      nil -> :undefined
+      %{key: key, cert: cert} -> [key: key, cert: cert]
     end
   end
 end

@@ -9,22 +9,20 @@ if Code.ensure_loaded?(ExAws.S3) do
 
     @impl Certified.AcmeCache
     def save_certificates!(certs_keys) do
-      Enum.each(certs_keys, fn %{cert: cert, key: {:ECPrivateKey, key}} ->
+      Enum.each(certs_keys, fn %{id: id, cert: cert, key: {:ECPrivateKey, key}} ->
         full_cert = X509.Certificate.from_der!(cert)
         private_key = X509.PrivateKey.from_der!(key)
 
-        [common_name] = X509.Certificate.subject(full_cert, "CN")
-
         bucket()
         |> ExAws.S3.put_object(
-          "#{@prefix}/#{common_name}/cert.pem",
+          "#{@prefix}/#{id}/cert.pem",
           X509.Certificate.to_pem(full_cert)
         )
         |> ExAws.request!(s3_config())
 
         bucket()
         |> ExAws.S3.put_object(
-          "#{@prefix}/#{common_name}/key.pem",
+          "#{@prefix}/#{id}/key.pem",
           X509.PrivateKey.to_pem(private_key)
         )
         |> ExAws.request!(s3_config())
@@ -40,15 +38,15 @@ if Code.ensure_loaded?(ExAws.S3) do
         |> String.split("/")
         |> List.first()
       end)
-      |> Enum.map(fn {common_name, files} ->
+      |> Enum.map(fn {certificate_id, files} ->
         cert_file =
           Enum.find(files, fn file ->
-            file.key =~ ~r{^#{@prefix}/#{common_name}/cert.pem$}
+            file.key =~ ~r{^#{@prefix}/#{certificate_id}/cert.pem$}
           end)
 
         key_file =
           Enum.find(files, fn file ->
-            file.key =~ ~r{^#{@prefix}/#{common_name}/key.pem$}
+            file.key =~ ~r{^#{@prefix}/#{certificate_id}/key.pem$}
           end)
 
         cert =
@@ -67,7 +65,7 @@ if Code.ensure_loaded?(ExAws.S3) do
           |> X509.PrivateKey.from_pem!()
           |> X509.PrivateKey.to_der()
 
-        %{cert: cert, key: {:ECPrivateKey, private_key}}
+        %{id: certificate_id, cert: cert, key: {:ECPrivateKey, private_key}}
       end)
       |> case do
         [] -> nil
