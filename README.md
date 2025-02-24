@@ -35,7 +35,7 @@ end
 ## Configure
 
 In your config, usually `config/runtime.exs`, change your `Endpoint` to use the
-included `Certified.SSLTransport` transport, as well as a self-signed key and cert to use on boot.
+included `Certified.sni_fun/0` function, as well as a self-signed key and cert to use on boot.
 
 These settings are added to the `thousand_island_options` of your `Endpoint` config:
 
@@ -134,18 +134,85 @@ config :certified,
 
 ### Multiple certificates
 
+```elixir
+config :certified,
+  certificates: [
+    %{domains: ["goodtimes.com"]},
+    %{domains: ["bestoftimes.com", "the.bestoftimes.com"]}
+  ],
+  ...
+```
+
+### Dynamic certificates
+
+```elixir
+config :certified,
+  certificates: &MyApp.Certificates.load_certificate_configs/0,
+  ...
+```
+
 ### Force SSL
+
+
 
 ### Save certificates to S3
 
+```elixir
+config :certified,
+  ...
+  cache: [
+    strategy: Certified.Caches.S3,
+    opts: [
+      access_key_id: "access_key_id",
+      secret_access_key: "secret_access_key",
+      bucket: "my-bucket",
+      scheme: "https://", # optional, default is "https://"
+      host: "a.different.provider.com", # optional, default is taken care of by ExAws,
+      region: "auto" # optional, default is "us-east-1"
+    ]
+  ]
+```
+
 ### Build your own certificates cache
 
+`Certified.AcmeCache`
+
+```elixir
+config :certified,
+  ...
+  cache: [
+    strategy: MyApp.MyCertifiedCache,
+    opts: [
+      some_config_item: "boop",
+      some_other_config_item: "boopboop"
+    ]
+  ]
+```
+
 ### HTTP challenge strategy options
+
+```elixir
+config :certified,
+  ...
+  cache: [
+    strategy: MyApp.MyCertifiedCache,
+    opts: [
+      some_config_item: "boop",
+      some_other_config_item: "boopboop"
+    ]
+  ]
+```
+
+### Configurable startup process
+
+Disable default startup process and place within your own application's supervision tree.
 
 
 ## Upcoming improvements
 
 - Docs docs docs, and examples
+- Add registration timeout
+- Support wildcard certs when selecting the right certificate to use
 - Support earlier Elixir versions? (switch to Jason or at least allow it to be used)
 
 ## Thanks and Attributions
