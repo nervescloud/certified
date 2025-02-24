@@ -18,18 +18,28 @@ defmodule Certified.CertificatesManager do
     defstruct acme: nil,
               certificates: nil,
               ec_key: nil,
-              certificate_cache: nil,
-              renewal_timer: nil,
-              configured?: false
+              renewal_timer: nil
+
+    @type certificate() :: %{
+            id: String.t(),
+            domains: [String.t()],
+            private_key_pem: String.t(),
+            certificate_pem: String.t(),
+            status:
+              :pending
+              | :order_created
+              | :validations_requested
+              | :finalizing
+              | :issued
+              | :invalid
+          }
 
     @type t ::
             %__MODULE__{
               acme: map(),
-              certificates: [map()],
+              certificates: [certificate()],
               ec_key: :public_key.ecdsa_public_key(),
-              certificate_cache: reference(),
-              renewal_timer: reference(),
-              configured?: boolean()
+              renewal_timer: reference()
             }
   end
 
@@ -41,8 +51,6 @@ defmodule Certified.CertificatesManager do
   def init(_) do
     certified_env = Application.get_all_env(:certified)
 
-    table = :ets.new(:certified_certificate_updater_cache, [:set, :protected, :named_table])
-
     {:ok, timer_ref} = :timer.send_interval(@renewal_interval, :renewal_check)
 
     :ok = PubSub.subscribe(Certified.PubSub, "certified:certificates_manager")
@@ -51,7 +59,6 @@ defmodule Certified.CertificatesManager do
       certificates: resolve_certificates_config(certified_env),
       ec_key: resolve_ec_key(certified_env),
       acme: Map.new(certified_env[:acme]),
-      certificate_cache: table,
       renewal_timer: timer_ref
     }
 
@@ -82,31 +89,26 @@ defmodule Certified.CertificatesManager do
         )
 
         if cached_matches_config?(certs_keys, state.certificates) do
-          certs_keys
-          |> filtered_cached(state.certificates)
-          |> update_ets_and_broadcast(state.certificate_cache)
+          filtered = filter_cached_certificates(certs_keys, state.certificates)
+
+          broadcast_certificates(filtered)
+
+          {:noreply, %State{state | certificates: filtered}}
         else
           Logger.debug(
             "[Certified.CertificatesManager] Cached certificates do not match configuration, requesting new certificates from provider"
           )
+
+          send(self(), :start_registration)
+
+          {:noreply, state}
         end
-
-        # renew or register new certificates
-        send(self(), :start_registration)
-
-        {:noreply, %State{state | configured?: true}}
     end
   end
 
   @impl GenServer
   def handle_info(%{event: "listener/online"}, state) do
-    case cached_certificates() do
-      [] ->
-        :ok
-
-      certs_keys ->
-        broadcast("certs_keys/updated", certs_keys)
-    end
+    broadcast_certificates(state.certificates)
 
     {:noreply, state}
   end
@@ -131,11 +133,13 @@ defmodule Certified.CertificatesManager do
     {updated_certificate, updated_certificates} =
       update_certificate_status(payload, state.certificates)
 
+    cert_info = Map.take(updated_certificate, [:id, :status, :domains])
+
     Logger.debug(
-      "[Certified.CertificatesManager] Certificate registration completed successfully : #{inspect(updated_certificate)}"
+      "[Certified.CertificatesManager] Certificate registration completed successfully : #{inspect(cert_info)}"
     )
 
-    update_ets_and_broadcast(payload, state.certificate_cache)
+    broadcast_certificates(updated_certificates)
 
     AcmeCache.save_certificates!([payload])
 
@@ -157,11 +161,11 @@ defmodule Certified.CertificatesManager do
   @impl GenServer
   def handle_info(:start_registration, state) do
     cond do
-      cached_certificates() == [] ->
+      state.certificates == [] ->
         Logger.debug("[Certified.CertificatesManager] Requesting certificates")
         request_certificates(state)
 
-      should_renew?() ->
+      should_renew?(state) ->
         Logger.debug("[Certified.CertificatesManager] Renewing certificates")
         request_certificates(state)
 
@@ -169,54 +173,79 @@ defmodule Certified.CertificatesManager do
         Logger.debug("[Certified.CertificatesManager] No certificates need renewing")
     end
 
-    {:noreply, %State{state | configured?: true}}
+    {:noreply, state}
   end
 
-  defp update_ets_and_broadcast(payloads, ets_table) when is_list(payloads) do
-    Logger.debug(
-      "[Certified.CertificatesManager] Broadcasting #{Enum.count(payloads)} certificate(s) to all nodes"
-    )
+  @impl GenServer
+  def handle_info(:renewal_check, state) do
+    renewal_list = renewal_list(state)
 
-    Enum.each(payloads, fn payload ->
-      domains =
-        payload.id
-        |> Base.url_decode64!(padding: false)
-        |> String.split(":")
+    if renewal_list != [] do
+      Logger.info(
+        "[Certified.CertificatesManager] #{Enum.count(renewal_list)} certificates require renewal"
+      )
 
-      cert_key = %{
-        domains: domains,
-        key_pem: payload.private_key_pem,
-        cert_pem: payload.certificate_pem
-      }
+      # I don't love this, this needs revisiting
+      matched_certs =
+        Enum.filter(state.certificates, fn %{domains: domains} ->
+          Enum.any?(renewal_list, fn %{domains: renewal_domains} ->
+            renewal_domains == domains
+          end)
+        end)
 
-      true = :ets.insert(ets_table, {payload.id, cert_key})
-    end)
+      renew_certificates(matched_certs, state)
+    else
+      Logger.debug("[Certified.CertificatesManager] No certificates need renewing")
+    end
 
-    pem_certs_keys =
-      :ets.match(ets_table, {:_, :"$2"})
-      |> List.flatten()
+    {:noreply, state}
+  end
+
+  defp broadcast_certificates(certificates) do
+    Logger.debug("[Certified.CertificatesManager] Broadcasting certificates to all nodes")
 
     certs_keys =
-      Enum.map(pem_certs_keys, fn %{domains: domains, key_pem: key_pem, cert_pem: cert_pem} ->
-        key =
-          key_pem
+      certificates
+      |> Enum.reject(fn certificate_config ->
+        is_nil(certificate_config[:certificate_pem])
+      end)
+      |> Enum.map(fn cert_config ->
+        private_key =
+          cert_config.private_key_pem
           |> X509.from_pem()
           |> List.first()
           |> X509.PrivateKey.to_der()
 
-        cert =
-          cert_pem
+        certificate =
+          cert_config.certificate_pem
           |> X509.from_pem()
           |> Enum.map(&X509.Certificate.to_der/1)
 
-        %{key: {:ECPrivateKey, key}, cert: cert, domains: domains}
+        domains =
+          if is_nil(cert_config[:domains]) do
+            {:Extension, _code, _, values} =
+              cert_config.certificate_pem
+              |> X509.from_pem()
+              |> List.first()
+              |> X509.Certificate.extension(:subject_alt_name)
+
+            sans = :public_key.der_decode(:SubjectAltName, values)
+
+            Enum.map(sans, fn {_type, dns} -> to_string(dns) end)
+          else
+            cert_config.domains
+          end
+
+        %{key: {:ECPrivateKey, private_key}, cert: certificate, domains: domains}
       end)
 
     broadcast("certs_keys/updated", certs_keys)
   end
 
-  defp update_ets_and_broadcast(payload, ets_table) do
-    update_ets_and_broadcast([payload], ets_table)
+  defp renew_certificates(certificates, state) do
+    Enum.each(certificates, fn certificate_config ->
+      request_certificate(certificate_config, state)
+    end)
   end
 
   defp request_certificates(state) do
@@ -284,7 +313,7 @@ defmodule Certified.CertificatesManager do
     end)
   end
 
-  defp filtered_cached(certs_keys, certificates_config) do
+  defp filter_cached_certificates(certs_keys, certificates_config) do
     filtered =
       Enum.filter(certs_keys, fn cert_key ->
         Enum.any?(certificates_config, fn certificate_config ->
@@ -310,6 +339,20 @@ defmodule Certified.CertificatesManager do
         certificate.id == payload.id
       end)
       |> Map.put(:status, payload.status)
+      |> then(fn updated_certificate ->
+        if payload[:private_key_pem] do
+          Map.put(updated_certificate, :private_key_pem, payload[:private_key_pem])
+        else
+          updated_certificate
+        end
+      end)
+      |> then(fn updated_certificate ->
+        if payload[:certificate_pem] do
+          Map.put(updated_certificate, :certificate_pem, payload[:certificate_pem])
+        else
+          updated_certificate
+        end
+      end)
 
     updated_certificates =
       certificates
@@ -323,30 +366,36 @@ defmodule Certified.CertificatesManager do
 
   defp resolve_certificates_config(env) do
     cond do
+      env[:certificates] && is_function(env[:certificates]) ->
+        env[:certificates].()
+
       env[:certificates] ->
         env[:certificates]
 
       env[:domain] ->
-        [%{domains: [env[:domain]]}]
+        [env[:domain]]
 
       env[:domains] && is_binary(env[:domains]) ->
-        [%{domains: String.split(env[:domains], ",")}]
+        String.split(env[:domains], ",")
 
       env[:domains] && is_list(env[:domains]) ->
-        [%{domains: env[:domains]}]
+        env[:domains]
 
       true ->
         raise("[Certified.CertificatesManager] No certificates or domain configured")
     end
-    |> Enum.map(fn certificate ->
-      normalized_domains = List.flatten([certificate.domains])
+    |> Enum.map(fn domains ->
+      normalized_domains = List.flatten([domains])
 
-      id =
+      domains_sha =
         normalized_domains
         |> Enum.join(":")
+        |> then(fn flat_domains ->
+          :crypto.hash(:sha256, flat_domains)
+        end)
         |> Base.url_encode64(padding: false)
 
-      %{id: id, domains: normalized_domains, status: :pending}
+      %{id: domains_sha, domains: normalized_domains, status: :pending}
     end)
   end
 
@@ -369,21 +418,26 @@ defmodule Certified.CertificatesManager do
     end
   end
 
-  defp should_renew?() do
-    case cached_certificates() do
+  defp should_renew?(state) do
+    case state.certificates do
       [] ->
         false
 
-      certs_keys ->
-        Enum.any?(certs_keys, fn %{cert_pem: cert_pem} ->
-          should_renew_cert?(cert_pem)
-        end)
+      _ ->
+        true
     end
   end
 
-  defp cached_certificates() do
-    :ets.match(:certified_certificate_updater_cache, {:_, :"$2"})
-    |> List.flatten()
+  defp renewal_list(state) do
+    case state.certificates do
+      [] ->
+        []
+
+      certs_keys ->
+        Enum.filter(certs_keys, fn %{certificate_pem: cert_pem} ->
+          should_renew_cert?(cert_pem)
+        end)
+    end
   end
 
   defp should_renew_cert?(cert_pem) do
