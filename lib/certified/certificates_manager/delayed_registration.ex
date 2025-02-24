@@ -1,4 +1,4 @@
-defmodule Certified.CertificatesManagerRegistration do
+defmodule Certified.CertificatesManager.DelayedRegistration do
   @moduledoc false
   use GenServer, restart: :transient
 
@@ -33,21 +33,21 @@ defmodule Certified.CertificatesManagerRegistration do
     |> case do
       {:ok, _} ->
         Logger.debug(
-          "[Certified.CertificatesManagerRegistration] CertificatesManager started successfully"
+          "[Certified.CertificatesManager.DelayedRegistration] CertificatesManager started successfully"
         )
 
         {:stop, :normal, nil}
 
       {:error, {:already_started, _}} ->
         Logger.debug(
-          "[Certified.CertificatesManagerRegistration] CertificatesManager already started and managed by ProcessHub"
+          "[Certified.CertificatesManager.DelayedRegistration] CertificatesManager already started and managed by ProcessHub"
         )
 
         {:stop, :normal, nil}
 
       error ->
         Logger.error(
-          "[Certified.CertificatesManagerRegistration] CertificatesManager registration encountered an error: #{inspect(error)}"
+          "[Certified.CertificatesManager.DelayedRegistration] CertificatesManager registration encountered an error: #{inspect(error)}"
         )
 
         {:stop, {error}, nil}

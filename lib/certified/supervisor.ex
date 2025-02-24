@@ -14,7 +14,7 @@ defmodule Certified.Supervisor do
           {Phoenix.PubSub, name: Certified.PubSub},
           Certified.NodeListener,
           ProcessHub.child_spec(%ProcessHub{hub_id: :certified}),
-          Certified.CertificatesManagerRegistration
+          Certified.CertificatesManager.DelayedRegistration
         ] ++ http_challenge_supervisor()
       else
         []
