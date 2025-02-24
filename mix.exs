@@ -1,7 +1,7 @@
 defmodule Certified.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version "0.1.1"
   @description "An ACME integration built for distributed Phoenix applications."
   @source_url "https://github.com/nervescloud/certified"
 
