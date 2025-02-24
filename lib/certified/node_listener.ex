@@ -1,4 +1,11 @@
 defmodule Certified.NodeListener do
+  @moduledoc """
+  Listens for updates to the Certificates and Private Keys managed by
+  `Certified.CertificatesManager`
+
+  The `NodeListener` waits a few extra seconds before announcing that it's online
+  so we can make sure that the node has joined the cluster.
+  """
   use GenServer
 
   alias Phoenix.PubSub
@@ -26,8 +33,6 @@ defmodule Certified.NodeListener do
 
     :ok = PubSub.subscribe(Certified.PubSub, "certified:node_listener")
 
-    # Give a few extra seconds before announcing the node is online so
-    # we can make sure (be defensive) that the node has joined the cluster
     Process.send_after(self(), :announce_online, @announce_online_delay)
 
     {:ok, %State{certificate_store: table}}
