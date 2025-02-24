@@ -4,7 +4,11 @@ defmodule Certified.AcmeCache do
   as well as the public key used for signing JWKs.
   """
 
-  @type cert_key_pair() :: %{{:ECPrivateKey, binary()}, cert: binary()}
+  @type cert_key_pair() :: %{
+          id: String.t(),
+          private_key_pem: String.t(),
+          certificate_pem: String.t()
+        }
 
   @doc """
   Save Certificates and Private Keys to the cache.
@@ -14,7 +18,7 @@ defmodule Certified.AcmeCache do
   @doc """
   Loads all Certificates and Private Keys from the cache.
   """
-  @callback load_certificates!() :: [cert_key_pair()] | nil
+  @callback load_certificates!() :: [cert_key_pair()] | []
 
   @doc """
   Cache the EC Key used for signing JWKs.

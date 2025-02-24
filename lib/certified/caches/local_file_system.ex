@@ -30,22 +30,22 @@ defmodule Certified.Caches.LocalFileSystem do
     if File.dir?(certificates_path()) do
       File.ls!(certificates_path())
       |> Enum.filter(fn path -> File.dir?(Path.join(certificates_path(), path)) end)
-      |> Enum.map(fn certificate_id ->
-        cert_key_path = Path.join(certificates_path(), certificate_id)
+      |> Enum.map(fn domains_sha ->
+        cert_key_path = Path.join(certificates_path(), domains_sha)
 
         cert_path = Path.join(cert_key_path, "cert.pem")
         key_path = Path.join(cert_key_path, "key.pem")
 
         if File.exists?(cert_path) && File.exists?(key_path) do
           %{
-            id: certificate_id,
+            id: domains_sha,
             certificate_pem: File.read!(cert_path),
             private_key_pem: File.read!(key_path)
           }
         end
       end)
     else
-      nil
+      []
     end
   end
 

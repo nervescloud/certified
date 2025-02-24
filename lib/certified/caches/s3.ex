@@ -9,22 +9,13 @@ if Code.ensure_loaded?(ExAws.S3) do
 
     @impl Certified.AcmeCache
     def save_certificates!(certs_keys) do
-      Enum.each(certs_keys, fn %{id: id, cert: cert, key: {:ECPrivateKey, key}} ->
-        full_cert = X509.Certificate.from_der!(cert)
-        private_key = X509.PrivateKey.from_der!(key)
-
+      Enum.each(certs_keys, fn %{id: id, certificate_pem: cert_pem, private_key_pem: key_pem} ->
         bucket()
-        |> ExAws.S3.put_object(
-          "#{@prefix}/#{id}/cert.pem",
-          X509.Certificate.to_pem(full_cert)
-        )
+        |> ExAws.S3.put_object("#{@prefix}/#{id}/cert.pem", cert_pem)
         |> ExAws.request!(s3_config())
 
         bucket()
-        |> ExAws.S3.put_object(
-          "#{@prefix}/#{id}/key.pem",
-          X509.PrivateKey.to_pem(private_key)
-        )
+        |> ExAws.S3.put_object("#{@prefix}/#{id}/key.pem", key_pem)
         |> ExAws.request!(s3_config())
       end)
     end
@@ -38,34 +29,30 @@ if Code.ensure_loaded?(ExAws.S3) do
         |> String.split("/")
         |> List.first()
       end)
-      |> Enum.map(fn {certificate_id, files} ->
+      |> Enum.map(fn {domains_sha, files} ->
         cert_file =
           Enum.find(files, fn file ->
-            file.key =~ ~r{^#{@prefix}/#{certificate_id}/cert.pem$}
+            file.key =~ ~r{^#{@prefix}/#{domains_sha}/cert.pem$}
           end)
 
         key_file =
           Enum.find(files, fn file ->
-            file.key =~ ~r{^#{@prefix}/#{certificate_id}/key.pem$}
+            file.key =~ ~r{^#{@prefix}/#{domains_sha}/key.pem$}
           end)
 
-        cert =
+        cert_pem =
           bucket()
           |> ExAws.S3.get_object(cert_file.key)
           |> ExAws.request!(s3_config())
           |> then(fn result -> result.body end)
-          |> X509.Certificate.from_pem!()
-          |> X509.Certificate.to_der()
 
-        private_key =
+        key_pem =
           bucket()
           |> ExAws.S3.get_object(key_file.key)
           |> ExAws.request!(s3_config())
           |> then(fn result -> result.body end)
-          |> X509.PrivateKey.from_pem!()
-          |> X509.PrivateKey.to_der()
 
-        %{id: certificate_id, cert: cert, key: {:ECPrivateKey, private_key}}
+        %{id: domains_sha, certificate_pem: cert_pem, private_key_pem: key_pem}
       end)
       |> case do
         [] -> nil
