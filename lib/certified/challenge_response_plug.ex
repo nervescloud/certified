@@ -1,4 +1,24 @@
 defmodule Certified.ChallengeResponsePlug do
+  @moduledoc """
+  This plug handles ACME HTTP challenges, as well as capturing all other
+  requests and redirecting to the HTTPS endpoint.
+
+  The SSL redirection options can be configured using the `:challenge_opts`
+  key in the `:certified` configuration, including the port Bandit listens on.
+
+  Below is an example configuration, including the defaults:
+
+    config :certified,
+      ...
+      challenge: :http,
+      challenge_opts: [
+        port: 80,
+        force_ssl: [rewrite_on: [:x_forwarded_proto], host: nil]
+      ]
+
+  You `challenge` option is not required. If you want to disable to plug, including
+  the SSL redirection, you can set the `:challenge` option to `:none`, `nil`, or `false`.
+  """
   @behaviour Plug
 
   require Logger
@@ -7,7 +27,7 @@ defmodule Certified.ChallengeResponsePlug do
 
   @impl Plug
   def init(_) do
-    ssl_opts = Keyword.get(challenge_strategy_settings(), :force_ssl)
+    ssl_opts = Keyword.get(challenge_opts(), :force_ssl)
 
     if ssl_opts do
       Plug.SSL.init(ssl_opts)
@@ -78,7 +98,7 @@ defmodule Certified.ChallengeResponsePlug do
       )
   end
 
-  defp challenge_strategy_settings() do
-    Application.get_env(:certified, :challenge_strategy_settings, force_ssl: @default_ssl_opts)
+  defp challenge_opts() do
+    Application.get_env(:certified, :challenge_opts, force_ssl: @default_ssl_opts)
   end
 end
