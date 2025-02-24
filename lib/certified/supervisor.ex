@@ -26,8 +26,8 @@ defmodule Certified.Supervisor do
   defp http_challenge_supervisor() do
     opts = Application.get_all_env(:certified)
 
-    if Keyword.get(opts, :challenge_strategy, :http) == :http do
-      settings = Keyword.get(opts, :challenge_strategy_settings, port: 80)
+    if Keyword.get(opts, :challenge, :http) == :http do
+      settings = Keyword.get(opts, :challenge_opts, port: 80)
       [{Bandit, plug: Certified.ChallengeResponsePlug, port: settings[:port]}]
     else
       []
